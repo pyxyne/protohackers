@@ -1,6 +1,6 @@
 # Pyxyne's Protohackers solutions
 
-Each file is named based on which problem it solves (p1_echo, p2_prime, etc.), and sometimes a suffix if there are multiple solutions.
+Each file is named based on which problem it solves (p0_echo, p1_prime, etc.), and sometimes a suffix if there are multiple solutions.
 
 Most solutions are in Python, and use a common framework defined in the "lib_*.py" files. Python 3.10 is known to work, some earlier versions may as well. No third-party libraries are required.
 

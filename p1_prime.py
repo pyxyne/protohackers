@@ -1,5 +1,4 @@
-from lib_tcp import TcpServer, LineConn
-from lib_color import *
+from lib_tcp import serve, LineClient
 import json
 
 def is_prime(n):
@@ -19,8 +18,8 @@ def is_prime(n):
 
 class MalformedRequest(ValueError): pass
 
-class PrimeConn(LineConn):
-	def got_line(self, line):
+class PrimeClient(LineClient):
+	def on_line(self, line):
 		try:
 			try:
 				req = json.loads(line)
@@ -36,13 +35,13 @@ class PrimeConn(LineConn):
 				raise MalformedRequest("invalid number, expected integer or float")
 			
 		except MalformedRequest as err:
-			self.log(f"{YELLOW}Got malformed request ({err}):")
-			self.log(f"{YELLOW}{repr(line)}")
+			self.warn(f"Got malformed request ({err}):")
+			self.warn("  " + repr(line))
 			res = { "error": str(err) }
-			self.send_str(json.dumps(res) + "\n")
+			self.send_line(json.dumps(res))
 		else:
 			res = { "method": "isPrime", "prime": is_prime(n) }
 			self.log(f"isPrime({n}) == {res['prime']}")
-			self.send_str(json.dumps(res) + "\n")
+			self.send_line(json.dumps(res))
 
-TcpServer(PrimeConn).listen()
+serve(PrimeClient)

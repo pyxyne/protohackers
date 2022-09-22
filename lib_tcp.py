@@ -1,150 +1,168 @@
 import socket
 import select
+from typing import Type
 from lib_color import *
 
-class ByteConn:
-	def __init__(self, server, sock, fd, addr):
-		self.server = server
-		self.sock = sock
-		self.fd = fd
-		self.addr = addr
-		self.closed = False
+
+PORT = 50_000
+BUF_SIZE = 4096
+
+
+client_count = 0
+def get_client_name():
+	global client_count
+	client_count += 1
+	return f"client_{client_count}"
+
+
+class ByteClient:
+	def __init__(self, sock: socket.socket):
+		self._sock = sock
+		self._buffer = bytearray()
+		self._closed = False
+		self.name = get_client_name()
 	
-	def ready(self):
-		pass
+	def on_open(self): pass
 	
-	def got_bytes(self, buf):
-		pass
+	def chunk(self, buf: bytes) -> int:
+		return len(buf)
 	
-	def got_eof(self):
-		pass
+	def on_bytes(self, buf: bytes): pass
 	
-	def send_bytes(self, buf):
-		assert not self.closed
-		self.sock.sendall(buf)
+	def on_eoi(self): pass
 	
-	def send_str(self, s):
-		assert not self.closed
-		self.sock.sendall(s.encode("utf-8"))
+	def _recv(self):
+		buf = self._sock.recv(BUF_SIZE)
+		if len(buf) == 0:
+			self.on_eoi()
+			if len(self._buffer) > 0:
+				self.warn("Unfinished message:", bytes(self._buffer))
+			self.close()
+			return
+		
+		self._buffer.extend(buf)
+		while len(self._buffer) > 0:
+			msg_len = self.chunk(bytes(self._buffer))
+			if msg_len < 0: break
+			msg, self._buffer = bytes(self._buffer[:msg_len]), self._buffer[msg_len:]
+			self.on_bytes(msg)
+			if self._closed:
+				self._buffer.clear()
+				return
 	
 	def log(self, *args):
 		msg = " ".join(map(str, args))
-		print(f"{DIM_WHITE}{self.addr}{RESET} {msg}{RESET}")
+		print(f"{DIM_WHITE}{self.name}{RESET} {msg}{RESET}")
 	
-	def close(self, skip_shutdown=False):
-		if self.closed: return
-		self.closed = True
-		if not skip_shutdown:
-			self.sock.shutdown(socket.SHUT_RDWR)
-		self.server.poller.unregister(self.sock)
-		self.sock.close()
-		del self.server.conns[self.fd]
+	def warn(self, *args):
+		self.log(f"{YELLOW}{args[0]}{RESET}", *args[1:])
+	
+	def send_bytes(self, buf):
+		if self._closed:
+			self.warn("Ignored write:", repr(buf))
+			return
+		self._sock.sendall(buf)
+	
+	def send_str(self, s):
+		self.send_bytes(s.encode("utf-8"))
+	def send_line(self, s):
+		self.send_str(s + "\n")
+	
+	def close(self):
+		if self._closed: return
+		self._closed = True
+		self._sock.shutdown(socket.SHUT_RDWR)
+		self._sock.close()
 
-class LineConn(ByteConn):
-	def __init__(self, *args):
-		super().__init__(*args)
-		self.buffer = bytearray()
-	
-	def got_line(self, line):
-		pass
-	
-	def got_bytes(self, buf):
-		i, j = 0, buf.find(b"\n")
-		while j != -1:
-			self.buffer.extend(buf[i:j])
-			try:
-				line = self.buffer.decode()
-			except UnicodeDecodeError:
-				self.log(f"{YELLOW}Line could not be decoded as UTF-8")
-			else:
-				self.got_line(line)
-			self.buffer = bytearray()
-			i, j = j+1, buf.find(b"\n", j+1)
-		self.buffer.extend(buf[i:])
-	
-	def got_eof(self):
-		if len(self.buffer) > 0:
-			self.got_line(self.buffer.decode())
 
-class TcpServer:
-	def __init__(self, Conn, port=50_000, buf_size=4096):
-		self.port = port
-		self.buf_size = buf_size
-		self.Conn = Conn
-		
-		self.conns = {}
-		self.poller = select.poll()
-		self.should_stop = False
+class LineClient(ByteClient):
+	def chunk(self, buf):
+		i = buf.find(b"\n")
+		return i + 1 if i != -1 else -1
 	
-	def listen(self):
+	def on_bytes(self, buf: bytes):
 		try:
-			addrs = socket.getaddrinfo(None, self.port, family=socket.AF_INET6,
-				type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
-			if len(addrs) < 0:
-				raise OSError("No usable address; IPv6 may not be supported.")
-			(family, sock_type, proto, _, addr) = addrs[0]
-			self.listener = socket.socket(family, sock_type, proto)
-			self.listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-			self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-			self.listener.bind(addr)
-			self.listener.listen(5)
-			
-		except OSError as e:
-			print(f"{BRIGHT_RED}Could not start server on port {self.port}{RESET}:")
-			print(e)
-			exit(1)
+			line = buf[:-1].decode(encoding="utf-8")
+		except UnicodeDecodeError:
+			self.warn("Received invalid UTF-8:", buf)
+		else:
+			self.on_line(line)
+	
+	def on_line(self, line: str): pass
+
+
+def serve(Client: Type[ByteClient]):
+	assert issubclass(Client, ByteClient)
+	
+	clients: dict[int, Client] = {}
+	poller = select.poll()
+	
+	should_stop = False
+	
+	try:
+		addrs = socket.getaddrinfo(None, PORT, family=socket.AF_INET6,
+			type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
+		if len(addrs) < 0:
+			raise OSError("No usable address, IPv6 may not be supported")
+		(family, sock_type, proto, _, addr) = addrs[0]
+		listener = socket.socket(family, sock_type, proto)
+		listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+		listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		listener.bind(addr)
+		listener.listen(5)
+		poller.register(listener, select.POLLIN)
 		
-		self.listener_fd = self.listener.fileno()
-		self.poller.register(self.listener, select.POLLIN)
+	except OSError as e:
+		print(f"{BRIGHT_RED}Could not start server on port {PORT}{RESET}:")
+		print(e)
+		exit(1)
+	
+	print(f"{BRIGHT_GREEN}Listening for connections on port {PORT}{RESET}")
+	
+	while not should_stop:
+		try:
+			events = poller.poll()
+		except KeyboardInterrupt:
+			print()
+			break
 		
-		print(f"{BRIGHT_GREEN}Listening for connections on port {self.port}{RESET}")
-		
-		while not self.should_stop:
-			try:
-				events = self.poller.poll()
-			except KeyboardInterrupt:
-				self.should_stop = True
-				break
-			
-			for (fd, event) in events:
-				if fd == self.listener_fd:
-					if event & select.POLLIN:
-						(new_sock, (host, port, _, _)) = self.listener.accept()
-						if host.startswith("::ffff:"): # ipv4
-							addr = f"{host[7:]}:{port}"
-						else: # ipv6
-							addr = f"[{host}]:{port}"
-						
-						self.poller.register(new_sock, select.POLLIN)
-						new_fd = new_sock.fileno()
-						conn = self.Conn(self, new_sock, new_fd, addr)
-						self.conns[new_fd] = conn
-						
-						conn.log(f"{CYAN}Connection opened")
-						conn.ready()
+		for fd, event in events:
+			if fd == listener.fileno():
+				if event & select.POLLIN:
+					(sock, (host, port, _, _)) = listener.accept()
+					if host.startswith("::ffff:"): # ipv4
+						addr = f"{host[7:]}:{port}"
+					else: # ipv6
+						addr = f"[{host}]:{port}"
 					
-					if event & select.POLLERR:
-						print(f"{BRIGHT_RED}Server errorred{RESET}")
-						self.should_stop = True
+					client = Client(sock)
+					clients[sock.fileno()] = client
+					poller.register(sock, select.POLLIN)
+					
+					client.log(f"{CYAN}New connection from {addr}")
+					client.on_open()
 				
-				else:
-					conn = self.conns[fd]
-					
-					reached_eof = False
-					if event & select.POLLIN:
-						buffer = conn.sock.recv(self.buf_size)
-						if len(buffer) > 0:
-							conn.got_bytes(buffer)
-						else:
-							conn.got_eof()
-							conn.close()
-							conn.log(f"{MAGENTA}Connection closed")
-					
-					if event & select.POLLERR:
-						conn.log(f"{RED}Socket errorred")
-						conn.close(skip_shutdown=True)
-		
-		print(f"{BRIGHT_MAGENTA}Stopping server{RESET}")
-		for conn in list(self.conns.values()):
-			conn.close()
-		self.listener.close()
+				if event & select.POLLERR:
+					print(f"{BRIGHT_RED}Listening socket errorred{RESET}")
+					should_stop = True
+					break
+			
+			else:
+				client = clients[fd]
+				
+				if (event & select.POLLIN) and not client._closed:
+					client._recv()
+				
+				if event & select.POLLERR:
+					client.log(f"{RED}Socket errorred")
+					client.close()
+				
+				if client._closed:
+					del clients[fd]
+					poller.unregister(fd)
+					client.log(f"{MAGENTA}Connection closed")
+	
+	print(f"{BRIGHT_MAGENTA}Stopping server{RESET}")
+	for client in list(clients.values()):
+		client.close()
+	listener.close()
