@@ -35,7 +35,7 @@ class ChatClient(LineClient):
 		else:
 			broadcast(f"[{self.name}] {line}", except_user=self)
 	
-	def on_eoi(self):
+	def on_eof(self):
 		if self.joined:
 			users.remove(self)
 			broadcast(f"* {self.name} has left the room")

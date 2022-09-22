@@ -29,12 +29,12 @@ class ByteClient:
 	
 	def on_bytes(self, buf: bytes): pass
 	
-	def on_eoi(self): pass
+	def on_eof(self): pass
 	
 	def _recv(self):
 		buf = self._sock.recv(BUF_SIZE)
 		if len(buf) == 0:
-			self.on_eoi()
+			self.on_eof()
 			if len(self._buffer) > 0:
 				self.warn("Unfinished message:", bytes(self._buffer))
 			self.close()
@@ -97,8 +97,6 @@ def serve(Client: Type[ByteClient]):
 	clients: dict[int, Client] = {}
 	poller = select.poll()
 	
-	should_stop = False
-	
 	try:
 		addrs = socket.getaddrinfo(None, PORT, family=socket.AF_INET6,
 			type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
@@ -119,6 +117,7 @@ def serve(Client: Type[ByteClient]):
 	
 	print(f"{BRIGHT_GREEN}Listening for connections on port {PORT}{RESET}")
 	
+	should_stop = False
 	while not should_stop:
 		try:
 			events = poller.poll()
@@ -129,17 +128,18 @@ def serve(Client: Type[ByteClient]):
 		for fd, event in events:
 			if fd == listener.fileno():
 				if event & select.POLLIN:
-					(sock, (host, port, _, _)) = listener.accept()
-					if host.startswith("::ffff:"): # ipv4
-						addr = f"{host[7:]}:{port}"
-					else: # ipv6
-						addr = f"[{host}]:{port}"
+					sock, (host, port, _, _) = listener.accept()
 					
 					client = Client(sock)
 					clients[sock.fileno()] = client
 					poller.register(sock, select.POLLIN)
 					
+					if host.startswith("::ffff:"): # ipv4
+						addr = f"{host[7:]}:{port}"
+					else: # ipv6
+						addr = f"[{host}]:{port}"
 					client.log(f"{CYAN}New connection from {addr}")
+					
 					client.on_open()
 				
 				if event & select.POLLERR:
@@ -150,7 +150,7 @@ def serve(Client: Type[ByteClient]):
 			else:
 				client = clients[fd]
 				
-				if (event & select.POLLIN) and not client._closed:
+				if event & select.POLLIN:
 					client._recv()
 				
 				if event & select.POLLERR:
