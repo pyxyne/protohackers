@@ -1,5 +1,5 @@
 import socket
-from lib_tcp import PORT, BUF_SIZE
+from lib_server import PORT, BUF_SIZE
 from lib_color import *
 	
 values: dict[str, str] = {}

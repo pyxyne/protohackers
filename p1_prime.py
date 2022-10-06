@@ -1,4 +1,4 @@
-from lib_tcp import serve, LineClient
+from lib_server import serve, LineClient
 import json
 
 def is_prime(n):
