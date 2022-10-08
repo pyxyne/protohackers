@@ -1,4 +1,4 @@
-from lib_aserve import serve_tcp, TcpPeer
+from lib_server import serve, LineClient
 import json
 
 def is_prime(n):
@@ -18,13 +18,8 @@ def is_prime(n):
 
 class MalformedRequest(ValueError): pass
 
-async def prime_handler(peer: TcpPeer):
-	while True:
-		try:
-			line = await peer.get_line()
-		except EOFError:
-			break
-		
+class PrimeClient(LineClient):
+	def on_line(self, line):
 		try:
 			try:
 				req = json.loads(line)
@@ -40,13 +35,13 @@ async def prime_handler(peer: TcpPeer):
 				raise MalformedRequest("invalid number, expected integer or float")
 			
 		except MalformedRequest as err:
-			peer.warn(f"Got malformed request ({err}):")
-			peer.warn("  " + repr(line))
+			self.warn(f"Got malformed request ({err}):")
+			self.warn("  " + repr(line))
 			res = { "error": str(err) }
-			peer.send_line(json.dumps(res))
+			self.send_line(json.dumps(res))
 		else:
 			res = { "method": "isPrime", "prime": is_prime(n) }
-			peer.log(f"isPrime({n}) == {res['prime']}")
-			peer.send_line(json.dumps(res))
+			self.log(f"isPrime({n}) == {res['prime']}")
+			self.send_line(json.dumps(res))
 
-serve_tcp(prime_handler)
+serve(PrimeClient)

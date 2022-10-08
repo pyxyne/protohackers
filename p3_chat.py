@@ -1,43 +1,36 @@
-from lib_server import serve, LineClient
+from lib_aserve import TcpPeer, log, serve_tcp
 from lib_color import *
 
-users = []
+users: dict[TcpPeer, str] = {}
 
-def broadcast(msg, except_user=None):
-	print(f"{CYAN}Broadcasting:{RESET}", msg)
-	for user in users:
-		if user is not except_user:
-			user.send_str(msg + "\n")
+def broadcast(msg, except_peer=None):
+	log(f"{CYAN}Broadcasting:{RESET}", msg)
+	for peer in users.keys():
+		if peer is not except_peer:
+			peer.send_line(msg)
 
-class ChatClient(LineClient):
-	def __init__(self, *args):
-		super().__init__(*args)
-		self.joined = False
+async def chat_handler(peer: TcpPeer):
+	peer.send_line("Welcome to budgetchat! What shall I call you?")
 	
-	def on_open(self):
-		self.send_str("Welcome to budgetchat! What shall I call you?\n")
+	name = await peer.get_line()
+	if len(name) == 0 or not all(c.isascii() and c.isalnum() for c in name):
+		peer.send_line("Username is invalid")
+		peer.end("Sent invalid username:", repr(name))
+		return
 	
-	def on_line(self, line):
-		if not self.joined:
-			if len(line) < 1 or not all(c.isascii() and c.isalnum() for c in line):
-				self.warn("Sent invalid username:", repr(line))
-				self.send_line("Username is invalid")
-				self.close()
-				return
-			self.name = line
-			
-			self.send_line("* The room contains: " + ", ".join(user.name for user in users))
-			broadcast(f"* {self.name} has entered the room")
-			
-			self.joined = True
-			users.append(self)
-		
-		else:
-			broadcast(f"[{self.name}] {line}", except_user=self)
+	peer.send_line("* The room contains: " + ", ".join(name for name in users.values()))
+	broadcast(f"* {name} has entered the room")
 	
-	def on_eof(self):
-		if self.joined:
-			users.remove(self)
-			broadcast(f"* {self.name} has left the room")
+	users[peer] = name
+	
+	while True:
+		try:
+			line = await peer.get_line()
+		except EOFError:
+			break
+		broadcast(f"[{name}] {line}", except_peer=peer)
+	
+	del users[peer]
+	broadcast(f"* {name} has left the room")
 
-serve(ChatClient)
+serve_tcp(chat_handler)

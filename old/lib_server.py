@@ -1,7 +1,7 @@
 import socket
 import select
 import time
-from typing import Any, Tuple, Type
+from typing import Any, Tuple, Type, cast
 from lib_color import *
 
 
@@ -161,7 +161,8 @@ def serve(Client: Type[ByteClient], udp=False):
 		(family, sock_type, proto, _, addr) = addrs[0]
 		listener = socket.socket(family, sock_type, proto)
 		listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-		listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		if not udp:
+			listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		listener.bind(addr)
 		if not udp:
 			listener.listen(5)
@@ -180,7 +181,7 @@ def serve(Client: Type[ByteClient], udp=False):
 			timeout = None
 			if udp and len(clients) > 0:
 				now = time.monotonic()
-				next_timeout = min(client.conn.timeout for client in clients.values())
+				next_timeout = min(cast(UdpConn, client.conn).timeout for client in clients.values())
 				timeout = (next_timeout - now) * 1000
 			events = poller.poll(timeout)
 		except KeyboardInterrupt:
@@ -207,7 +208,7 @@ def serve(Client: Type[ByteClient], udp=False):
 							
 						else:
 							client = clients[addr]
-							client.conn.update_timeout()
+							cast(UdpConn, client.conn).update_timeout()
 						
 						client.recv(buf)
 						
@@ -233,7 +234,7 @@ def serve(Client: Type[ByteClient], udp=False):
 					client.close()
 				
 				elif event & select.POLLIN:
-					buf = client.conn.sock.recv(BUF_SIZE)
+					buf = cast(TcpConn, client.conn).sock.recv(BUF_SIZE)
 					if len(buf) == 0:
 						client.eof()
 					else:
@@ -247,7 +248,7 @@ def serve(Client: Type[ByteClient], udp=False):
 		if udp: # check for timeouts
 			now = time.monotonic()
 			for key, client in list(clients.items()):
-				if client.conn.timeout <= now:
+				if cast(UdpConn, client.conn).timeout <= now:
 					del clients[key]
 					client.close()
 					client.log(f"{MAGENTA}Client timed out")

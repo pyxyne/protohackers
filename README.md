@@ -1,7 +1,7 @@
 # Pyxyne's Protohackers solutions
 
-Each file is named based on which problem it solves (p0_echo, p1_prime, etc.), and sometimes a suffix if there are multiple solutions.
+Each file is named based on which problem it solves (p0_echo, p1_prime, etc.). Older versions of the solutions are in the `old` folder, with a suffix for each iteration (`_v1`, `_v2`, etc.).
 
-Most solutions are in Python, and use a common framework defined in the "lib_*.py" files. Python 3.10 is known to work, some earlier versions may as well. No third-party libraries are required.
+Most solutions are in Python, and use a common framework defined in the "lib_*.py" files. The first problem also has a C++ solution (compiled with g++ 11.2).
 
-The first problem also has a C++ solution, which should be pretty easy to compile on a Linux machine. No libraries or special compiler options required.
+Solutions were tested on Ubuntu 22.04, with Python 3.10 and no third-party libraries. I make no guarantee that they run on older versions. They also probably don't work on non-Linux OSes.
