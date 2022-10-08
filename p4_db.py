@@ -1,4 +1,4 @@
-from lib_aserve import UdpPeer, serve_udp
+from lib_aserve import UdpPeer, serve_udp, shorten
 from lib_color import *
 
 values: dict[bytes, bytes] = {}
@@ -9,13 +9,12 @@ async def db_handler(peer: UdpPeer):
 			msg = await peer.get_dgram()
 		except EOFError:
 			break
-		peer.log("Datagram:", msg)
 		if b"=" in msg: # insert
 			[key, val] = msg.split(b"=", maxsplit=1)
 			if key == "version":
 				peer.log(f"{YELLOW}Ignored insert into 'version'")
 			else:
-				peer.log(f"Inserted {repr(key)}: {repr(val)}")
+				peer.log(f"Inserted {repr(key)}: {shorten(repr(val))}")
 				values[key] = val
 		else: # retrieve
 			key = msg
@@ -23,7 +22,7 @@ async def db_handler(peer: UdpPeer):
 				val = b"pyxyne's db"
 			else:
 				val = values.get(key, b"")
-			peer.log(f"Retrieved {repr(key)}: {repr(val)}")
+			peer.log(f"Retrieved {repr(key)}: {shorten(repr(val))}")
 			peer.send_dgram(key + b"=" + val)
 
 serve_udp(db_handler)

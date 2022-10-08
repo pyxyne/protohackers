@@ -13,7 +13,7 @@ from lib_color import *
 
 PORT = 50_000
 TCP_BACKLOG = 5 # max queued connections
-UDP_TIMEOUT = 10 # seconds
+UDP_TIMEOUT = 1 # seconds
 
 
 def listen_ip(sock_type: socket.SocketKind, port: int):
@@ -52,6 +52,12 @@ def log(*args):
 	msg = " ".join(map(str, args))
 	timestamp = f"{time.monotonic() - start_time: >6.2f}s"
 	print(f"{DIM_WHITE}{timestamp}{RESET} {msg}{RESET}")
+
+def shorten(s):
+	if len(s) > 50:
+		return s[:50] + "..."
+	else:
+		return s
 
 T = TypeVar("T")
 class Stream(Generic[T]):
@@ -221,12 +227,15 @@ class TcpPeer(Peer):
 	
 	async def get_bytes_until(self, stop_at: Callable[[bytearray], int]):
 		buffer = bytearray()
-		while (i := stop_at(buffer)) < 0:
+		while (i := stop_at(buffer)) == -1:
 			buffer.extend(await self.get_bytes())
 		buffer = bytes(buffer)
-		msg, rest = buffer[:i], buffer[i:]
-		self.chunks.put_back(rest)
-		return msg
+		if i == len(buffer):
+			return buffer
+		else:
+			msg, rest = buffer[:i], buffer[i:]
+			self.chunks.put_back(rest)
+			return msg
 	
 	async def get_line(self) -> str:
 		def find_nl(b):
@@ -285,8 +294,8 @@ class TcpServer(Server[TcpPeer]):
 		self.server.close()
 		await self.server.wait_closed()
 
-def serve_tcp(handler: TcpHandler, port=PORT, timeout: float | None = None, backlog=TCP_BACKLOG):
-	asyncio.run(TcpServer(handler, timeout, backlog).serve(port), debug=True)
+def serve_tcp(handler: TcpHandler, port=PORT, timeout: float | None = None, backlog=TCP_BACKLOG, debug=False):
+	asyncio.run(TcpServer(handler, timeout, backlog).serve(port), debug=debug)
 
 
 class UdpPeer(Peer):
@@ -350,5 +359,5 @@ class UdpServer(Server, asyncio.DatagramProtocol):
 			log(f"{BRIGHT_RED}{exc}")
 			self.stop()
 
-def serve_udp(handler: UdpHandler, port=PORT, timeout: float | None = UDP_TIMEOUT):
-	asyncio.run(UdpServer(handler, timeout).serve(port), debug=True)
+def serve_udp(handler: UdpHandler, port=PORT, timeout: float | None = UDP_TIMEOUT, debug=False):
+	asyncio.run(UdpServer(handler, timeout).serve(port), debug=debug)
