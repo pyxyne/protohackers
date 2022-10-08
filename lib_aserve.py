@@ -82,9 +82,14 @@ class Stream(Generic[T]):
 		self.eof = True
 		if len(self.queue) == 0 and self.next is not None:
 			self.next.set_exception(EOFError())
+			self.next = None
 	
 	def put_back(self, x: T):
-		self.queue.appendleft(x)
+		if self.next is None:
+			self.queue.appendleft(x)
+		else:
+			self.next.set_result(x)
+			self.next = None
 	
 	async def get(self) -> T:
 		assert self.next is None
@@ -213,10 +218,7 @@ class TcpPeer(Peer):
 	
 	async def get_bytes(self) -> bytes:
 		try:
-			if self.server.timeout is None:
-				return await self.chunks.get()
-			else:
-				return await asyncio.wait_for(self.chunks.get(), self.server.timeout)
+			return await asyncio.wait_for(self.chunks.get(), self.server.timeout)
 		except EOFError:
 			self.log(f"{MAGENTA}Peer closed connection")
 			raise EOFError
@@ -272,10 +274,15 @@ class TcpProtocol(asyncio.Protocol):
 	
 	def eof_received(self):
 		self.peer.on_eof()
-		return True # don't automatically close socket
+		return True # allow half-duplex shutdown
 	
 	def data_received(self, data: bytes):
 		self.peer.on_bytes(data)
+	
+	def connection_lost(self, exc: Exception | None):
+		if exc is not None:
+			self.peer.warn("Connection lost:", exc)
+			self.peer.on_eof()
 
 class TcpServer(Server[TcpPeer]):
 	server: asyncio.Server
@@ -300,22 +307,19 @@ def serve_tcp(handler: TcpHandler, port=PORT, timeout: float | None = None, back
 
 class UdpPeer(Peer):
 	server: "UdpServer"
-	dgram_queue: asyncio.Queue[bytes]
+	dgrams: Stream[bytes]
 	
 	def __init__(self, server: "UdpServer", addr: Addr):
 		super().__init__(server, addr)
-		self.dgram_queue = asyncio.Queue()
+		self.dgrams = Stream()
 		server.peers[addr] = self
 	
 	def on_dgram(self, data: bytes):
-		self.dgram_queue.put_nowait(data)
+		self.dgrams.put(data)
 	
 	async def get_dgram(self) -> bytes:
 		try:
-			if self.server.timeout is None:
-				return await self.dgram_queue.get()
-			else:
-				return await asyncio.wait_for(self.dgram_queue.get(), self.server.timeout)
+			return await asyncio.wait_for(self.dgrams.get(), self.server.timeout)
 		except asyncio.TimeoutError:
 			self.log(f"{MAGENTA}Peer timed out.")
 			raise EOFError
@@ -356,7 +360,7 @@ class UdpServer(Server, asyncio.DatagramProtocol):
 	
 	def connection_lost(self, exc: Exception | None):
 		if exc is not None:
-			log(f"{BRIGHT_RED}{exc}")
+			log(f"{BRIGHT_RED}Connection lost: {exc}")
 			self.stop()
 
 def serve_udp(handler: UdpHandler, port=PORT, timeout: float | None = UDP_TIMEOUT, debug=False):
