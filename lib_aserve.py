@@ -239,11 +239,15 @@ class TcpPeer(Peer):
 			self.chunks.put_back(rest)
 			return msg
 	
-	async def get_line(self) -> str:
+	async def get_raw_line(self) -> bytes:
 		def find_nl(b):
 			i = b.find(b"\n")
 			return -1 if i == -1 else i + 1
 		line = await self.get_bytes_until(find_nl)
+		return line
+	
+	async def get_line(self) -> str:
+		line = await self.get_raw_line()
 		return line[:-1].decode("utf-8")
 	
 	def send_bytes(self, data: bytes):
