@@ -120,6 +120,9 @@ class Peer:
 	def warn(self, *args):
 		self.log(f"{YELLOW}{args[0]}{RESET}", *args[1:])
 	
+	def debug(self, *args):
+		self.log(f"{DIM_WHITE}{args[0]}", *args[1:])
+	
 	def end(self, *args):
 		self.log(f"{MAGENTA}{args[0]}{RESET}", *args[1:])
 	
