@@ -216,6 +216,9 @@ class TcpPeer(Peer):
 	def on_eof(self):
 		self.chunks.put_eof()
 	
+	def is_eof(self) -> bool:
+		return self.chunks.eof
+	
 	def on_bytes(self, data: bytes):
 		self.chunks.put(data)
 	
@@ -241,6 +244,9 @@ class TcpPeer(Peer):
 			msg, rest = buffer[:i], buffer[i:]
 			self.chunks.put_back(rest)
 			return msg
+	
+	async def get_n_bytes(self, n: int) -> bytes:
+		return await self.get_bytes_until(lambda b: -1 if len(b) < n else n)
 	
 	async def get_raw_line(self) -> bytes:
 		def find_nl(b):
