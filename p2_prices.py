@@ -7,12 +7,9 @@ async def price_handler(peer: TcpPeer):
 	
 	while True:
 		try:
-			msg = await peer.get_bytes_until(lambda b: 9 if len(b) >= 9 else -1)
+			ty, arg1, arg2 = await peer.get_struct("!cii")
 		except EOFError:
 			break
-		ty = msg[0:1]
-		arg1 = int.from_bytes(msg[1:5], byteorder="big", signed=True)
-		arg2 = int.from_bytes(msg[5:9], byteorder="big", signed=True)
 		
 		if ty == b"I":
 			timestamp, price = arg1, arg2
@@ -25,7 +22,7 @@ async def price_handler(peer: TcpPeer):
 			i2 = bisect_right(prices, max_time, key=lambda x: x[0])
 			selected = [p for (t,p) in prices[i1:i2]]
 			mean = int(sum(selected) / len(selected)) if len(selected) > 0 else 0
-			peer.send_bytes(mean.to_bytes(4, byteorder="big", signed=True))
+			peer.send_struct("!i", mean)
 		else:
 			peer.warn("Invalid message type:", repr(ty))
 

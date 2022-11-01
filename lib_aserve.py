@@ -3,16 +3,18 @@ import asyncio.transports
 from collections import deque
 import signal
 import socket
+import struct
 import time
 from abc import ABC, abstractmethod
 import traceback
-from typing import Callable, Coroutine, Dict, Generic, Tuple, TypeVar
+from typing import Any, Callable, Coroutine, Dict, Generic, Tuple, TypeVar
 
 from lib_color import *
 
 
 PORT = 50_000
 TCP_BACKLOG = 5 # max queued connections
+NOW_TIMEOUT = 0.05 # seconds
 UDP_TIMEOUT = 1 # seconds
 
 
@@ -75,7 +77,8 @@ class Stream(Generic[T]):
 		if self.next is None:
 			self.queue.append(x)
 		else:
-			self.next.set_result(x)
+			if not self.next.cancelled():
+				self.next.set_result(x)
 			self.next = None
 	
 	def put_eof(self):
@@ -107,15 +110,17 @@ class Peer:
 	server: "Server"
 	addr: Addr
 	id: int
+	name: str
 	
 	def __init__(self, server: "Server", addr: Addr):
 		self.server = server
 		self.addr = addr
 		self.id = server.new_peer_id()
+		self.name = f"peer{self.id}"
 		self.log(f"{CYAN}New connection from {get_addr_str(addr)}")
 	
 	def log(self, *args):
-		log(f"{DIM_WHITE}peer{self.id}{RESET}", *args)
+		log(f"{DIM_WHITE}{self.name}{RESET}", *args)
 	
 	def warn(self, *args):
 		self.log(f"{YELLOW}{args[0]}{RESET}", *args[1:])
@@ -171,9 +176,12 @@ class Server(Generic[PeerT], ABC):
 		async def safe_handler():
 			try:
 				await self.handler(peer)
-			except EOFError:
-				peer.log(f"{YELLOW}Unexpected EOF")
-			except Exception as err:
+			except EOFError as exc:
+				tb = traceback.TracebackException.from_exception(exc)
+				peer.log(f"{BRIGHT_YELLOW}Unexpected EOF at:")
+				for frame in tb.stack[-8:][::-1]:
+					peer.warn(f"  {frame.filename} l.{frame.lineno} ({frame.name})")
+			except Exception:
 				peer.log(f"{BRIGHT_RED}Error:")
 				print(f"{BRIGHT_RED}{traceback.format_exc().rstrip()}")
 				self.stop()
@@ -222,9 +230,9 @@ class TcpPeer(Peer):
 	def on_bytes(self, data: bytes):
 		self.chunks.put(data)
 	
-	async def get_bytes(self) -> bytes:
+	async def get_bytes(self, now=False) -> bytes:
 		try:
-			return await asyncio.wait_for(self.chunks.get(), self.server.timeout)
+			return await asyncio.wait_for(self.chunks.get(), NOW_TIMEOUT if now else self.server.timeout)
 		except EOFError:
 			self.log(f"{MAGENTA}Peer closed connection")
 			raise EOFError
@@ -233,10 +241,10 @@ class TcpPeer(Peer):
 			self.disconnect()
 			raise EOFError
 	
-	async def get_bytes_until(self, stop_at: Callable[[bytearray], int]):
+	async def get_bytes_until(self, stop_at: Callable[[bytearray], int], now=False):
 		buffer = bytearray()
 		while (i := stop_at(buffer)) == -1:
-			buffer.extend(await self.get_bytes())
+			buffer.extend(await self.get_bytes(now))
 		buffer = bytes(buffer)
 		if i == len(buffer):
 			return buffer
@@ -245,18 +253,23 @@ class TcpPeer(Peer):
 			self.chunks.put_back(rest)
 			return msg
 	
-	async def get_n_bytes(self, n: int) -> bytes:
-		return await self.get_bytes_until(lambda b: -1 if len(b) < n else n)
+	async def get_n_bytes(self, n: int, now=False) -> bytes:
+		return await self.get_bytes_until(lambda b: -1 if len(b) < n else n, now)
 	
-	async def get_raw_line(self) -> bytes:
+	async def get_struct(self, fmt: str, now=False) -> Any:
+		b = await self.get_n_bytes(struct.calcsize(fmt), now)
+		tup = struct.unpack(fmt, b)
+		return tup[0] if len(tup) == 1 else tup
+	
+	async def get_raw_line(self, now=False) -> bytes:
 		def find_nl(b):
 			i = b.find(b"\n")
 			return -1 if i == -1 else i + 1
-		line = await self.get_bytes_until(find_nl)
+		line = await self.get_bytes_until(find_nl, now)
 		return line
 	
-	async def get_line(self) -> str:
-		line = await self.get_raw_line()
+	async def get_line(self, now=False) -> str:
+		line = await self.get_raw_line(now)
 		return line[:-1].decode("utf-8")
 	
 	def send_bytes(self, data: bytes):
@@ -267,6 +280,9 @@ class TcpPeer(Peer):
 		self.send_str(s + "\n")
 	def send_eof(self):
 		self.trans.write_eof()
+	
+	def send_struct(self, fmt: str, *v: Any):
+		self.send_bytes(struct.pack(fmt, *v))
 	
 	def disconnect(self):
 		self.trans.close()
