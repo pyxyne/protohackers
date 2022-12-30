@@ -1,0 +1,5 @@
+name "p9_job"
+description "A solution for Protohackers problem 9"
+authors "pyxyne"
+copyright "Copyright © 2022, pyxyne"
+license "proprietary"

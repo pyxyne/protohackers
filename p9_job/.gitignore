@@ -1,0 +1,16 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/p9_job
+p9_job.so
+p9_job.dylib
+p9_job.dll
+p9_job.a
+p9_job.lib
+p9_job-test-*
+*.exe
+*.pdb
+*.o
+*.obj
+*.lst
