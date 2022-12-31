@@ -105,22 +105,24 @@ class TcpConn : PrettyLogger {
 }
 
 class TcpServer {
-	Socket sock;
 	void delegate(TcpConn) handler;
+	ushort port;
+	Socket sock;
 	int nextClientId;
 	
 	this(ushort port, void delegate(TcpConn) handler) {
 		this.handler = handler;
+		this.port = port;
 		nextClientId = 0;
 		sock = new TcpSocket(AddressFamily.INET6);
 		sock.blocking = false;
 		sock.setOption(SocketOptionLevel.SOCKET, SocketOption.REUSEADDR, 1);
 		sock.bind(new Internet6Address(Internet6Address.ADDR_ANY, port));
-		sock.listen(10);
-		infof("Server is listening on port %s", port);
 	}
 	
-	void run() {
+	void run(int backlog = 10) {
+		sock.listen(backlog);
+		infof("Server is listening on port %s", port);
 		asyncRun({
 			while(true) {
 				awaitFd(sock.handle, EPOLLIN, -1);

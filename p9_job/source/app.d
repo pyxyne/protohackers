@@ -1,6 +1,7 @@
 import std.algorithm;
 import std.container : BinaryHeap, Array;
 import std.array : array;
+import std.format : format;
 import std.json;
 import core.exception : RangeError;
 
@@ -45,6 +46,13 @@ class JobQueue {
 			jobs.insert(job);
 		}
 	}
+}
+
+T expect(T)(T[string] dict, string key) {
+	if(key !in dict) {
+		throw new BadRequest(format("field '%s' is missing", key));
+	}
+	return dict[key];
 }
 
 void main() {
@@ -94,13 +102,13 @@ void main() {
 					try {
 						try {
 							JSONValue req = parseJSON(line);
-							string op = req.object["request"].str;
+							string op = req.object.expect("request").str;
 							switch(op) {
 								case "put":
-									string queue = req.object["queue"].str;
-									int pri = cast(int) req.object["pri"].integer;
+									string queue = req.object.expect("queue").str;
+									int pri = cast(int) req.object.expect("pri").integer;
 									int jobId = nextJobId++;
-									Job job = new Job(jobId, pri, queue, req.object["job"]);
+									Job job = new Job(jobId, pri, queue, req.object.expect("job"));
 									jobs[jobId] = job;
 									getQueue(queue).add(job);
 									respond(JSONValue([
@@ -110,7 +118,7 @@ void main() {
 									break;
 								
 								case "get":
-									string[] selectedQueues = req.object["queues"].array
+									string[] selectedQueues = req.object.expect("queues").array
 										.map!"a.str".array;
 									
 									int highestPrio = -1;
@@ -158,7 +166,7 @@ void main() {
 									break;
 								
 								case "delete":
-									int jobId = cast(int) req["id"].integer;
+									int jobId = cast(int) req.object.expect("id").integer;
 									if(jobId !in jobs) {
 										respond(JSONValue([
 											"status": "no-job"
@@ -182,7 +190,7 @@ void main() {
 									break;
 								
 								case "abort":
-									int jobId = cast(int) req["id"].integer;
+									int jobId = cast(int) req.object.expect("id").integer;
 									if(jobId !in jobs) {
 										respond(JSONValue([
 											"status": "no-job"
@@ -221,6 +229,6 @@ void main() {
 					break;
 				}
 			}
-		}).run();
+		}).run(1000);
 	});
 }
