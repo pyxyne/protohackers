@@ -1,9 +1,10 @@
-module log;
+module async_d.log;
 
 import std.logger;
-import std.stdio : stdout;
+import std.stdio : stdout, stderr;
 import std.concurrency : Tid;
 import std.datetime.systime : SysTime;
+import std.process : environment;
 
 immutable string RESET         = "\u001b[0m";
 immutable string DIM_WHITE     = "\u001b[37;2m";
@@ -45,12 +46,20 @@ class PrettyLogger : FileLogger {
 			default:
 				msgColor = RESET;
 		}
-		formattedWrite(lt, "%s%s %s:%u%s%s ",
-			DIM_WHITE,
-			datetime[timeIdx .. timeEndIdx],
-			file[fnIdx .. $], line,
-			prefix.length == 0 ? "" : " " ~ prefix,
-			msgColor);
+		if(this.logLevel == LogLevel.trace) {
+			formattedWrite(lt, "%s%s %s:%-3u %s%s",
+				DIM_WHITE,
+				datetime[timeIdx .. timeEndIdx],
+				file[fnIdx .. $], line,
+				prefix.length == 0 ? "" : " " ~ prefix,
+				msgColor);
+		} else {
+			formattedWrite(lt, "%s%s%s %s",
+				DIM_WHITE,
+				datetime[timeIdx .. timeEndIdx],
+				prefix.length == 0 ? "" : " " ~ prefix,
+				msgColor);
+		}
 	}
 	
 	override protected void finishLogMsg() {
@@ -58,7 +67,21 @@ class PrettyLogger : FileLogger {
     this.file_.flush();
 	}
 	
-	static void setup(LogLevel logLevel = LogLevel.info) {
-		stdThreadLocalLog = new PrettyLogger("", logLevel);
+	static void setup() {
+		string logConfig = environment.get("LOG");
+		LogLevel level;
+		if(logConfig == null || logConfig == "info") {
+			level = LogLevel.info;
+		} else if(logConfig == "trace") {
+			level = LogLevel.trace;
+		} else {
+			stderr.writeln("%sInvalid log level: %s%s", BRIGHT_YELLOW, logConfig, RESET);
+			level = LogLevel.info;
+		}
+		stdThreadLocalLog = new PrettyLogger("", level);
 	}
+}
+
+static this() {
+	PrettyLogger.setup();
 }

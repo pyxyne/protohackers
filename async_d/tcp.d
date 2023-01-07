@@ -1,4 +1,4 @@
-module tcp;
+module async_d.tcp;
 
 import std.algorithm : findSplit;
 import std.bitmanip : bigEndianToNative;
@@ -6,13 +6,13 @@ import std.logger;
 import std.socket;
 import std.format : format;
 import std.json : JSONValue;
-
+import std.typecons : nullable;
 import core.stdc.errno;
 
 import core.sys.linux.epoll;
 
-import loop;
-import log;
+import async_d.loop;
+import async_d.log;
 
 class EofError : Exception {
 	this() {
@@ -46,7 +46,7 @@ class TcpConn : PrettyLogger {
 	}
 	
 	immutable(ubyte)[] readChunk() {
-		awaitFd(sock.handle, EPOLLIN, -1);
+		awaitEvent(nullable(FileEvent(sock.handle, EPOLLIN)));
 		ubyte[BUF_SIZE] chunk;
 		long bytes = sock.receive(chunk);
 		if(bytes == 0) throw new EofError();
@@ -91,7 +91,7 @@ class TcpConn : PrettyLogger {
 			}
 			totalSent += sent;
 			if(totalSent < buf.length) {
-				awaitFd(sock.handle, EPOLLOUT, -1);
+				awaitEvent(nullable(FileEvent(sock.handle, EPOLLOUT)));
 			} else {
 				break;
 			}
@@ -125,7 +125,7 @@ class TcpServer {
 		infof("Server is listening on port %s", port);
 		asyncRun({
 			while(true) {
-				awaitFd(sock.handle, EPOLLIN, -1);
+				awaitEvent(nullable(FileEvent(sock.handle, EPOLLIN)));
 				spawn(handlerDelegate(sock.accept()));
 			}
 		});

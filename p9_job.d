@@ -3,11 +3,10 @@ import std.container : BinaryHeap, Array;
 import std.array : array;
 import std.format : format;
 import std.json;
+import core.time : MonoTime;
 import core.exception : RangeError;
 
-import loop;
-import tcp;
-import log;
+import async_d;
 
 class BadRequest : Exception {
 	this(string msg) {
@@ -56,8 +55,6 @@ T expect(T)(T[string] dict, string key) {
 }
 
 void main() {
-	PrettyLogger.setup();
-	
 	int nextJobId = 0;
 	int nextClientId = 0;
 	Job[int] jobs;
@@ -90,14 +87,14 @@ void main() {
 			void respond(JSONValue val) {
 				string valStr = val.toString;
 				conn.write(cast(immutable(ubyte)[]) (valStr ~ "\n"));
-				conn.infof("-> %s", valStr);
+				conn.tracef("-> %s", valStr);
 			}
 			
 			conn.infof("Client connected");
 			while(true) {
 				try {
 					string line = cast(string) conn.readLine();
-					conn.infof("<- %s", line);
+					conn.tracef("<- %s", line);
 					
 					try {
 						try {
