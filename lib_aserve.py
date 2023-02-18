@@ -42,12 +42,17 @@ def listen_ip(sock_type: socket.SocketKind, port: int):
 	return sock
 
 Addr = Tuple[str, int, int, int]
-def get_addr_str(addr: Addr):
-	(host, port, _, _) = addr
-	if host.startswith("::ffff:"): # ipv4
-		return f"{host[7:]}:{port}"
+def get_addr_str(addr: Addr | Tuple[str, int]):
+	if len(addr) == 2: # ipv4:
+		(host, port) = addr
 	else: # ipv6
+		(host, port, _, _) = addr
+	if host.startswith("::ffff:"): # ipv4 encoded as ipv6
+		return f"{host[7:]}:{port}"
+	elif ":" in host: # ipv6
 		return f"[{host}]:{port}"
+	else:
+		return f"{host}:{port}"
 
 start_time = time.monotonic()
 def log(*args):
@@ -112,12 +117,12 @@ class Peer:
 	id: int
 	name: str
 	
-	def __init__(self, server: "Server", addr: Addr):
+	def __init__(self, server: "Server", addr: Addr, prefix = "peer"):
 		self.server = server
 		self.addr = addr
 		self.id = server.new_peer_id()
-		self.name = f"peer{self.id}"
-		self.log(f"{CYAN}New connection from {get_addr_str(addr)}")
+		self.name = prefix + str(self.id)
+		self.log(f"{CYAN}Connected to {get_addr_str(addr)}")
 	
 	def log(self, *args):
 		log(f"{DIM_WHITE}{self.name}{RESET}", *args)
@@ -172,10 +177,11 @@ class Server(Generic[PeerT], ABC):
 		self.last_peer_id += 1
 		return self.last_peer_id
 	
-	def new_peer(self, peer: Peer):
+	def new_peer(self, peer: Peer, custom_handler: Handler | None = None):
+		handler = custom_handler if custom_handler is not None else self.handler
 		async def safe_handler():
 			try:
-				await self.handler(peer)
+				await handler(peer)
 			except EOFError as exc:
 				tb = traceback.TracebackException.from_exception(exc)
 				peer.log(f"{BRIGHT_YELLOW}Unexpected EOF at:")
@@ -216,8 +222,8 @@ class TcpPeer(Peer):
 	chunks: Stream[bytes]
 	trans: asyncio.Transport
 	
-	def __init__(self, server: "TcpServer", trans: asyncio.Transport):
-		super().__init__(server, trans.get_extra_info("peername"))
+	def __init__(self, server: "TcpServer", trans: asyncio.Transport, prefix = "peer"):
+		super().__init__(server, trans.get_extra_info("peername"), prefix)
 		self.chunks = Stream()
 		self.trans = trans
 	
@@ -294,12 +300,14 @@ class TcpProtocol(asyncio.Protocol):
 	server: "TcpServer"
 	peer: TcpPeer
 	
-	def __init__(self, server: "TcpServer"):
+	def __init__(self, server: "TcpServer", custom_handler: Handler | None = None, peer_prefix = "peer"):
 		self.server = server
+		self.custom_handler = custom_handler
+		self.peer_prefix = peer_prefix
 	
 	def connection_made(self, trans: asyncio.Transport):
-		self.peer = TcpPeer(self.server, trans)
-		self.server.new_peer(self.peer)
+		self.peer = TcpPeer(self.server, trans, self.peer_prefix)
+		self.server.new_peer(self.peer, self.custom_handler)
 	
 	def eof_received(self):
 		self.peer.on_eof()
@@ -320,6 +328,11 @@ class TcpServer(Server[TcpPeer]):
 	def __init__(self, handler: TcpHandler, timeout: float | None, backlog: int):
 		super().__init__(handler, timeout)
 		self.backlog = backlog
+	
+	async def add_external_peer(self, host, port, family, prefix: str, handler: TcpHandler) -> TcpPeer:
+		loop = asyncio.get_running_loop()
+		_, prot = await loop.create_connection(lambda: TcpProtocol(self, handler, prefix), host, port, family=family)
+		return prot.peer
 	
 	async def open(self, port: int):
 		sock = listen_ip(socket.SOCK_STREAM, port)
