@@ -11,6 +11,8 @@
 #include <map>
 #include <sstream>
 
+#include <fmt/core.h>
+
 #include "json.hpp"
 #include "server.hpp"
 
@@ -71,7 +73,7 @@ struct Client final : public BaseClient, public std::enable_shared_from_this<Cli
 		
 		std::string esc_name;
 		json_escape_str(esc_name, std::string_view(job->queue->name));
-		write(std::format(R"({{"status":"ok","queue":{},"pri":{},"id":{},"job":{}}})""\n",
+		write(fmt::format(R"({{"status":"ok","queue":{},"pri":{},"id":{},"job":{}}})""\n",
 			esc_name, job->priority, job->id, *job->payload));
 		printf("[%03d] -> Job %d\n", id, job->id);
 	}
@@ -111,7 +113,7 @@ struct Client final : public BaseClient, public std::enable_shared_from_this<Cli
 			
 			queue_job(std::move(job));
 			
-			write(std::format(R"({{"status":"ok","id":{}}})""\n", job_id));
+			write(fmt::format(R"({{"status":"ok","id":{}}})""\n", job_id));
 			printf("[%03d] -> Job %d\n", id, job_id);
 			
 			return true;
