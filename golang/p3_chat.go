@@ -22,7 +22,7 @@ func isValidName(s string) bool {
 func P3() {
 	mutex := sync.Mutex{}
 	nextId := 0
-	joined := make(map[int]*lib.Client)
+	joined := make(map[int]*lib.TcpClient)
 
 	var broadcast = func(from int, fs string, args ...any) {
 		s := fmt.Sprintf(fs, args...)
@@ -34,7 +34,7 @@ func P3() {
 			}
 		}
 	}
-	var addClient = func(c *lib.Client) int {
+	var addClient = func(c *lib.TcpClient) int {
 		mutex.Lock()
 		defer mutex.Unlock()
 		id := nextId
@@ -63,7 +63,7 @@ func P3() {
 		return b.String()
 	}
 
-	lib.ServeTcp(func(c *lib.Client) (err error) {
+	lib.ServeTcp(func(c *lib.TcpClient) (err error) {
 		c.WriteLine("Welcome to budgetchat! What shall I call you?")
 		name, err := c.ReadLine()
 		if err != nil {
