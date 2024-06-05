@@ -3,31 +3,10 @@ package main
 import (
 	"pyxyne/protohackers/lib"
 	"regexp"
-	"sync"
 )
 
 const serverAddr = "chat.protohackers.com:16963"
 const tonysWallet = "7YWHMfk9JZe0LM0g1ZauHuiSxhI"
-
-type Flag struct {
-	flag  bool
-	mutex sync.RWMutex
-}
-
-func (f *Flag) IfUnset(cb func() bool) bool {
-	f.mutex.RLock()
-	defer f.mutex.RUnlock()
-	if f.flag {
-		return true
-	} else {
-		return cb()
-	}
-}
-func (f *Flag) Set() {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	f.flag = true
-}
 
 func P5() {
 	walletRegex, err := regexp.Compile(`7[a-zA-Z0-9]{25,34}`)
