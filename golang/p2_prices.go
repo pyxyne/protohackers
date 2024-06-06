@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	"encoding/binary"
 	"pyxyne/protohackers/lib"
@@ -22,29 +21,26 @@ func P2() {
 		prices := make([]Price, 0)
 
 		for c.HasData() {
-			msg, err := c.ReadExactly(9)
-			if err != nil {
-				return err
+			r := c.GetBinReader()
+			req_ty := r.U8()
+			req_a := r.I32BE()
+			req_b := r.I32BE()
+			if r.Err != nil {
+				return r.Err
 			}
-			var req struct {
-				T uint8
-				A int32
-				B int32
-			}
-			binary.Read(bytes.NewReader(msg), binary.BigEndian, &req)
-			switch req.T {
+			switch req_ty {
 			case 'I':
-				price := Price{req.A, req.B}
+				price := Price{req_a, req_b}
 				c.Log.Debug("Inserting price at t=%d", price.timestamp)
 				i, _ := slices.BinarySearchFunc(prices, price.timestamp, cmpPriceTimestamp)
 				prices = slices.Insert(prices, i, price)
 			case 'Q':
-				i1, _ := slices.BinarySearchFunc(prices, req.A, cmpPriceTimestamp)
-				i2, _ := slices.BinarySearchFunc(prices, req.B, cmpPriceTimestamp)
-				for i2 < len(prices) && prices[i2].timestamp == req.B {
+				i1, _ := slices.BinarySearchFunc(prices, req_a, cmpPriceTimestamp)
+				i2, _ := slices.BinarySearchFunc(prices, req_b, cmpPriceTimestamp)
+				for i2 < len(prices) && prices[i2].timestamp == req_b {
 					i2++
 				}
-				c.Log.Debug("Querying mean for t in [%d;%d] -> i in [%d;%d]", req.A, req.B, i1, i2)
+				c.Log.Debug("Querying mean for t in [%d;%d] -> i in [%d;%d]", req_a, req_b, i1, i2)
 				var mean int32
 				if i1 >= i2 {
 					mean = 0

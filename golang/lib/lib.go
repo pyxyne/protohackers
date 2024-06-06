@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -60,9 +61,15 @@ func (l *Logger) CheckFatal(err error) {
 		os.Exit(1)
 	}
 }
+
 func CheckPanic(err error) {
 	if err != nil {
 		panic(err)
+	}
+}
+func Assert(cond bool) {
+	if !cond {
+		panic("assertion failed")
 	}
 }
 
@@ -74,11 +81,11 @@ type TcpClient struct {
 	Log  Logger
 }
 
-func NewTcpClient(conn net.Conn) *TcpClient {
+func NewTcpClient(conn net.Conn, name string) *TcpClient {
 	return &TcpClient{
 		conn,
 		make([]byte, 0, TCP_BUFFER_SIZE),
-		Logger{conn.RemoteAddr().String()},
+		Logger{name},
 	}
 }
 
@@ -163,16 +170,86 @@ func (c *TcpClient) WriteLine(msg string) {
 	c.WriteAll(append([]byte(msg), '\n'))
 }
 
+type BinReader struct {
+	c   *TcpClient
+	Err error
+}
+
+func (c *TcpClient) GetBinReader() *BinReader {
+	return &BinReader{c, nil}
+}
+func (r *BinReader) U8() uint8 {
+	var bytes []byte
+	if r.Err == nil {
+		bytes, r.Err = r.c.ReadExactly(1)
+	}
+	if r.Err != nil {
+		return 0
+	}
+	return bytes[0]
+}
+func (r *BinReader) U16BE() uint16 {
+	var bytes []byte
+	if r.Err == nil {
+		bytes, r.Err = r.c.ReadExactly(2)
+	}
+	if r.Err != nil {
+		return 0
+	}
+	return binary.BigEndian.Uint16(bytes)
+}
+func (r *BinReader) U32BE() uint32 {
+	var bytes []byte
+	if r.Err == nil {
+		bytes, r.Err = r.c.ReadExactly(4)
+	}
+	if r.Err != nil {
+		return 0
+	}
+	return binary.BigEndian.Uint32(bytes)
+}
+func (r *BinReader) I32BE() int32 {
+	return int32(r.U32BE())
+}
+func (r *BinReader) Bytes(n int) []byte {
+	var bytes []byte
+	if r.Err == nil {
+		bytes, r.Err = r.c.ReadExactly(n)
+	}
+	if r.Err != nil {
+		return nil
+	}
+	return bytes
+}
+
+type BinWriter struct {
+	Buf []byte
+}
+
+func (r *BinWriter) U8(x uint8) {
+	r.Buf = append(r.Buf, x)
+}
+func (r *BinWriter) U16BE(x uint16) {
+	r.Buf = binary.BigEndian.AppendUint16(r.Buf, x)
+}
+func (r *BinWriter) U32BE(x uint32) {
+	r.Buf = binary.BigEndian.AppendUint32(r.Buf, x)
+}
+func (r *BinWriter) Bytes(x []byte) {
+	r.Buf = append(r.Buf, x...)
+}
+
 func ConnectTcp(addr string) (*TcpClient, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	return NewTcpClient(conn), nil
+	return NewTcpClient(conn, conn.LocalAddr().String()), nil
 }
 
 func ServeTcp(cb func(*TcpClient) error) {
 	log := Logger{""}
+	nextId := 1
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(PORT))
 	log.CheckFatal(err)
 	defer listener.Close()
@@ -180,9 +257,11 @@ func ServeTcp(cb func(*TcpClient) error) {
 	for {
 		conn, err := listener.Accept()
 		log.CheckFatal(err)
-		go func(conn net.Conn) {
+		id := nextId
+		nextId++
+		go func(conn net.Conn, id int) {
 			defer conn.Close()
-			client := NewTcpClient(conn)
+			client := NewTcpClient(conn, fmt.Sprintf("peer%d", id))
 			client.Log.Info("Connected")
 			err := cb(client)
 			if err != nil {
@@ -191,7 +270,7 @@ func ServeTcp(cb func(*TcpClient) error) {
 				client.Log.Info("Done")
 			}
 			client.Close()
-		}(conn)
+		}(conn, id)
 	}
 }
 

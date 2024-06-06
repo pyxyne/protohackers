@@ -12,6 +12,7 @@ var scripts = map[string]func(){
 	"P3": P3,
 	"P4": P4,
 	"P5": P5,
+	"P6": P6,
 }
 
 func main() {
@@ -21,7 +22,7 @@ func main() {
 	}
 	script, ok := scripts[os.Args[1]]
 	if !ok {
-		fmt.Printf("No script with name %v\n", os.Args[1])
+		fmt.Printf("No script with name %q\n", os.Args[1])
 		os.Exit(1)
 	}
 	fmt.Printf("Running script %s\n", os.Args[1])
