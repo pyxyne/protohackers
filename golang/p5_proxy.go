@@ -32,7 +32,7 @@ func P5() {
 		return line
 	}
 
-	lib.ServeTcp(func(c *lib.TcpClient) (err error) {
+	lib.ServeTcp(func(c *lib.TcpClient) error {
 		srv, err := lib.ConnectTcp(serverAddr)
 		if err != nil {
 			return err

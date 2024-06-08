@@ -14,9 +14,8 @@ import (
 )
 
 const PORT = 50_000
-const TCP_BUFFER_SIZE = 4096 // bytes
-const UDP_TIMEOUT = 1 * time.Second
-const UDP_BUFFERED = 4 // messages
+const TCP_BUFFER = 4096 // bytes
+const UDP_BUFFER = 20   // messages
 
 const RESET = "\x1b[0m"
 const FAINT_WHITE = "\x1b[37;2m"
@@ -84,7 +83,7 @@ type TcpClient struct {
 func NewTcpClient(conn net.Conn, name string) *TcpClient {
 	return &TcpClient{
 		conn,
-		make([]byte, 0, TCP_BUFFER_SIZE),
+		make([]byte, 0, TCP_BUFFER),
 		Logger{name},
 	}
 }
@@ -275,19 +274,12 @@ func ServeTcp(cb func(*TcpClient) error) {
 }
 
 type UdpClient struct {
+	Msgs chan []byte
+	Log  Logger
+
 	conn         net.PacketConn
 	addr         net.Addr
-	msgs         chan []byte
 	lastActivity time.Time
-	Log          Logger
-}
-
-func (c *UdpClient) ReadMsg() []byte {
-	msg, more := <-c.msgs
-	if !more {
-		return nil
-	}
-	return msg
 }
 
 func (c *UdpClient) SendMsg(msg []byte) error {
@@ -304,7 +296,7 @@ func (c *UdpClient) SendMsg(msg []byte) error {
 	return nil
 }
 
-func ServeUdp(cb func(*UdpClient) error) {
+func ServeUdp(timeout time.Duration, cb func(*UdpClient) error) {
 	log := Logger{""}
 	conn, err := net.ListenPacket("udp", ":"+strconv.Itoa(PORT))
 	log.CheckFatal(err)
@@ -317,7 +309,7 @@ func ServeUdp(cb func(*UdpClient) error) {
 		dl_addr := ""
 		dl_time := time.Time{}
 		for addr, c := range clients {
-			t := c.lastActivity.Add(UDP_TIMEOUT)
+			t := c.lastActivity.Add(timeout)
 			if dl_addr == "" || t.Compare(dl_time) == -1 {
 				dl_addr = addr
 				dl_time = t
@@ -328,7 +320,7 @@ func ServeUdp(cb func(*UdpClient) error) {
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
-				close(clients[dl_addr].msgs)
+				close(clients[dl_addr].Msgs)
 				delete(clients, dl_addr)
 				continue
 			}
@@ -338,7 +330,7 @@ func ServeUdp(cb func(*UdpClient) error) {
 		cid := addr.String()
 		c, has := clients[cid]
 		if !has {
-			c = &UdpClient{conn, addr, make(chan []byte, UDP_BUFFERED), time.Now(), Logger{cid}}
+			c = &UdpClient{make(chan []byte, UDP_BUFFER), Logger{cid}, conn, addr, time.Now()}
 			clients[cid] = c
 			go func(client *UdpClient) {
 				client.Log.Info("Connected")
@@ -352,11 +344,7 @@ func ServeUdp(cb func(*UdpClient) error) {
 		}
 
 		msg := slices.Clone(buf[:n])
-		select {
-		case c.msgs <- msg:
-		default:
-			c.Log.Error("Message dropped; channel buffer full")
-		}
 		c.lastActivity = time.Now()
+		c.Msgs <- msg
 	}
 }

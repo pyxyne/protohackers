@@ -5,6 +5,7 @@ import (
 	"pyxyne/protohackers/lib"
 	"slices"
 	"sync"
+	"time"
 )
 
 func P4() {
@@ -25,10 +26,10 @@ func P4() {
 		return db[key]
 	}
 
-	lib.ServeUdp(func(c *lib.UdpClient) (err error) {
+	lib.ServeUdp(1*time.Second, func(c *lib.UdpClient) error {
 		for {
-			msg := c.ReadMsg()
-			if msg == nil {
+			msg, ok := <-c.Msgs
+			if !ok {
 				break
 			}
 			c.Log.Debug("<- %q", msg)

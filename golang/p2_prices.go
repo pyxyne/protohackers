@@ -17,7 +17,7 @@ func cmpPriceTimestamp(p Price, t int32) int {
 }
 
 func P2() {
-	lib.ServeTcp(func(c *lib.TcpClient) (err error) {
+	lib.ServeTcp(func(c *lib.TcpClient) error {
 		prices := make([]Price, 0)
 
 		for c.HasData() {

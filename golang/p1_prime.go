@@ -30,7 +30,7 @@ type Req struct {
 }
 
 func P1() {
-	lib.ServeTcp(func(c *lib.TcpClient) (err error) {
+	lib.ServeTcp(func(c *lib.TcpClient) error {
 		for c.HasData() {
 			msg, err := c.ReadLine()
 			if err != nil {

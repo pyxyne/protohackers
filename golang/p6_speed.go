@@ -149,7 +149,7 @@ func P6() {
 	}
 	go plateProcessor()
 
-	lib.ServeTcp(func(c *lib.TcpClient) (err error) {
+	lib.ServeTcp(func(c *lib.TcpClient) error {
 		role := ROLE_UNKNOWN
 		heartbeatSet := false
 		var road, mile, limit uint16

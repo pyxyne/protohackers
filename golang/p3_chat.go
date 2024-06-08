@@ -63,7 +63,7 @@ func P3() {
 		return b.String()
 	}
 
-	lib.ServeTcp(func(c *lib.TcpClient) (err error) {
+	lib.ServeTcp(func(c *lib.TcpClient) error {
 		c.WriteLine("Welcome to budgetchat! What shall I call you?")
 		name, err := c.ReadLine()
 		if err != nil {
