@@ -24,7 +24,7 @@ func isPrime(xf float64) bool {
 	return true
 }
 
-type Req struct {
+type P1Req struct {
 	Method string
 	Number float64
 }
@@ -37,7 +37,7 @@ func P1() {
 				return err
 			}
 			c.Log.Debug("Request: %#v", string(msg))
-			req := Req{"", math.NaN()}
+			req := P1Req{"", math.NaN()}
 			err = json.Unmarshal([]byte(msg), &req)
 			if err != nil || req.Method != "isPrime" || math.IsNaN(req.Number) {
 				c.Log.Warn("Malformed request")

@@ -19,7 +19,7 @@ func parseU31(s []byte) (int, bool) {
 }
 
 // Application layer
-func app(session *Session) {
+func lineReverser(session *Session) {
 	var buf []byte
 	for msg := range session.Recv {
 		buf = append(buf, msg...)
@@ -84,7 +84,7 @@ func newSession(id int, client *lib.UdpClient) *Session {
 		events: make(chan Event),
 		closed: atomic.Bool{},
 	}
-	go app(s)
+	go lineReverser(s)
 	go func() {
 		recved := 0
 		acked := 0

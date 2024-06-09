@@ -14,6 +14,8 @@ var scripts = map[string]func(){
 	"P5": P5,
 	"P6": P6,
 	"P7": P7,
+	"P8": P8,
+	"P9": P9,
 }
 
 func main() {

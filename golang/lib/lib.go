@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -96,7 +97,7 @@ func (c *TcpClient) Receive() bool {
 	c.buf = slices.Grow(c.buf, 512)
 	n, err := c.conn.Read(c.buf[len(c.buf):cap(c.buf)])
 	if err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) {
 			return false
 		}
 		panic(err)
@@ -160,6 +161,10 @@ func (c *TcpClient) WriteAll(msg []byte) {
 	for len(msg) > 0 {
 		n, err := c.conn.Write(msg)
 		if err != nil {
+			if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+				c.Log.Error("Couldn't send: socket closed")
+				return
+			}
 			panic(err)
 		}
 		msg = msg[n:]
