@@ -125,6 +125,7 @@ func (c *TcpClient) ReadUntil(pred func([]byte) int) ([]byte, error) {
 	}
 	res := slices.Clone(c.buf[:n])
 	c.buf = slices.Delete(c.buf, 0, n)
+	c.Log.Debug("<- %q", res)
 	return res, nil
 }
 func (c *TcpClient) ReadAny() ([]byte, error) {
@@ -158,6 +159,7 @@ func (c *TcpClient) ReadLine() (string, error) {
 }
 
 func (c *TcpClient) WriteAll(msg []byte) {
+	c.Log.Debug("-> %q", msg)
 	for len(msg) > 0 {
 		n, err := c.conn.Write(msg)
 		if err != nil {
